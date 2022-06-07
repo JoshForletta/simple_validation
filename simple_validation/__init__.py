@@ -1,7 +1,1 @@
-from .simple_validation import (
-    Validated, 
-    classvalidator, 
-    staticvalidator, 
-    validator, 
-    FailedValidation
-)
+from .validated_attr import ValidatedAttr
