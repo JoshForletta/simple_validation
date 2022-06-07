@@ -1,1 +1,7 @@
-from .simple_validation import Validated, validator, FailedValidation
+from .simple_validation import (
+    Validated, 
+    classvalidator, 
+    staticvalidator, 
+    validator, 
+    FailedValidation
+)

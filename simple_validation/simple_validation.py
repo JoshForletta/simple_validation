@@ -79,7 +79,7 @@ class ValidatorDescriptor():
     def __call__(self, instance: Validated, *args) -> None:
         try: return self.func(*args)
         except FailedValidation as e: 
-            if self.cache: 
+            if self.cache and instance is not None: 
                 instance.__dict__.setdefault('__validation_cache__', {})\
                     [(self.func.__name__, args[-1])] = e
             raise e
