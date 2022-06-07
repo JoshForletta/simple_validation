@@ -1,7 +1,7 @@
 from __future__ import annotations
 from collections import defaultdict
 import functools
-from typing import Any, Callable, ParamSpec, Type, TypeVar
+from typing import Any, Callable, ParamSpec, Type, TypeAlias, TypeVar
 
 
 Self = TypeVar('Self')
@@ -20,62 +20,95 @@ class FailedValidation(Exception):
 
 class Validated():
     _validation_fail_msgs: list[tuple[str, tuple[str]]]
-    __validators__: defaultdict[_KT, set[str]]
-
-    def __new__(cls: Type[Self], *arg, **kwargs) -> Self:
-        o: Self = super().__new__(cls)
-        o.__validators__ = defaultdict(set)
-
-        for attr_name, attr in o.__class__.__dict__.items():
-            if not hasattr(attr, '__validate_types__'): continue
-            
-            for t in attr.__validate_types__:
-                o.__validators__[t].add(attr_name)
-
-        return o
+    __validators__: defaultdict[_KT, set[str]] = defaultdict(set)
 
     @property
-    def _failed_validation_msgs(self):
-        pass
-    
+    def _current_validation_frame(self) -> list[tuple[str, list]]:
+        try: return self.__dict__['_validation_frame'][-1][1]
+        except KeyError: return self.__dict__.setdefault('_validation_frame', [])
+
+
     def validate(self, o: _T) -> _R:
-        fail_msgs = self.__dict__.setdefault('_validation_fail_msgs', set())
         validators = self.__validators__.get(type(o), self.__validators__[None])
-        # print('VALIDATE', fail_msgs, validators)
 
         if not validators: raise FailedValidation(
             f"No validators specified for type `{type(o)}`"
         )
 
+        cache = self.__dict__.setdefault('__validation_cache__', {})
         for v_name in validators:
+            if (v_name, o) in cache: continue
             try: 
                 rv = getattr(self, v_name)(o)
-            except FailedValidation as e: 
-                fail_msgs.add((v_name, e.args))
+            except FailedValidation as e: pass
             else:
-                del fail_msgs
                 return rv
-            
-        fail_msgs_copy = fail_msgs.copy()
-        del fail_msgs
+
         raise FailedValidation(
-            "\n\t{}".format(
-                '\n\t'.join(
-                    (
-                        "{}:\n\t\t{}".format(n, '\n\t\t'.join(ms)) 
-                        if len(ms) > 1 else f"{n}: {ms[0]}"
-                        for n, ms in fail_msgs_copy
-                    )
-                )
+            "\n\t" + "\n\t".join(
+                "{}({}):\n\t\t{}".format(
+                    k[0], repr(k[1]), "\n\t\t".join(e.args)
+                ) for k, e in cache.items()
             )
         )
 
 
+class ValidatorDescriptor():
+    def __init__(
+        self, 
+        func: Callable[_P, _T], 
+        *, 
+        types: tuple[type], 
+        cache: bool
+    ) -> Callable[_P, _T]:
+        self.func = func
+        self.types = types
+        self.cache = cache
+
+    def __set_name__(self, cls: type, name) -> None:
+        self.cls = cls
+        if not '__validators__' in cls.__dict__: 
+            cls.__validators__ = defaultdict(set)
+
+        for t in self.types:
+            cls.__validators__[t].add(name)
+
+    def __get__(self, instance, objtype=None) -> Callable[_P, _T]:
+        return functools.partial(self.__call__, instance, instance)
+
+    def __call__(self, instance: Validated, *args) -> None:
+        try: return self.func(*args)
+        except FailedValidation as e: 
+            if self.cache: 
+                instance.__dict__.setdefault('__validation_cache__', {})\
+                    [(self.func.__name__, args[-1])] = e
+            raise e
 
 
 
-def validator(*types: Type[_T]) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
-    def decorator(func: Callable[_P, _R]) -> Callable[_P, _R]:
-        func.__validate_types__ = types if types else (None,)
-        return func
+class ClassValidatorDescriptor(ValidatorDescriptor):
+    def __get__(self, instance, objtype=None) -> Callable[_P, _T]:
+        return functools.partial(self.__call__, instance, self.cls)
+
+
+class StaticValidatorDescriptor(ValidatorDescriptor):
+    def __get__(self, instance, objtype=None) -> Callable[_P, _T]:
+        return functools.partial(self.__call__, instance)
+    
+
+def validator(*types, cache: bool = True):
+    def decorator(func: Callable) -> Callable:
+        return functools.wraps(func)(ValidatorDescriptor(func, types=types, cache=cache))
     return decorator
+
+def classvalidator(*types, cache: bool = True):
+    def decorator(func: Callable) -> Callable:
+        return functools.wraps(func)(ClassValidatorDescriptor(func, types=types, cache=cache))
+    return decorator
+
+def staticvalidator(*types, cache: bool = True):
+    def decorator(func: Callable) -> Callable:
+        return functools.wraps(func)(StaticValidatorDescriptor(func, types=types, cache=cache))
+    return decorator
+
+
