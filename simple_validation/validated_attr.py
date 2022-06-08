@@ -4,20 +4,14 @@ import functools
 from io import StringIO
 from typing import Any, Callable, ParamSpec, Type, TypeAlias, TypeVar
 
+from ._base import FailedValidation, _format_failed_validations
+
 
 Self = TypeVar('Self')
 _T = TypeVar('_T')
 _OT = TypeVar('_OT')
 _P = ParamSpec('_P')
 _R = TypeVar('_R')
-
-_KT = TypeVar('_KT')
-_VT = TypeVar('_VT')
-
-
-
-class FailedValidation(Exception):
-    pass
 
 
 class ValidatedAttr():
@@ -46,17 +40,6 @@ class ValidatedAttr():
         self._setter = func
         return func
 
-    def _format_failed_validations(self, fvs: list[tuple[str, _OT, FailedValidation]]) -> str:
-        rs = StringIO()
-        for vn, value, e in fvs:
-            rs.write("\n\t{}({}):\n\t\t".format(vn, repr(value)))
-            rs.write("\n\t\t".join(
-                ("\t\t".join(str(a).splitlines(keepends=True)) for a in e.args) 
-            ))
-
-        rs.seek(0); return rs.read()
-            
-
     def _validate(self, instance: _T, value: _OT) -> Any:
         failed_validations = []
         validators = self._validators.get(type(value), self._validators[None])
@@ -66,7 +49,7 @@ class ValidatedAttr():
             except FailedValidation as e: 
                 failed_validations.append((validator.__name__, value, e))
 
-        raise FailedValidation(self._format_failed_validations(failed_validations))
+        raise FailedValidation(_format_failed_validations(failed_validations))
 
     def validator(
         self, *types
