@@ -57,18 +57,12 @@ class ValidatedMapping(
     MutableMapping[_KT, _VT], 
     metaclass=ValidatedMappingABCMeta
 ):
-    _kv_validators: defaultdict[
+    _kv_validators: dict[
         tuple[Type[_IKT], Type[_IVT]], 
         set[Callable[[ValidatedMapping, _IKT, _IVT], tuple[_KT, _VT]]]
     ]
-    _k_validators: defaultdict[
-        Type[_IKT], 
-        set[Callable[[ValidatedMapping, _IKT, _IVT], tuple[_KT, _VT]]]
-    ]
-    _v_validators: defaultdict[
-        Type[_IVT], 
-        set[Callable[[ValidatedMapping, _IKT, _IVT], tuple[_KT, _VT]]]
-    ]
+    _k_validators: dict[Type[_IKT], set[Callable[[ValidatedMapping, _IKT], _KT]]]
+    _v_validators: dict[Type[_IVT], set[Callable[[ValidatedMapping, _IVT], _VT]]]
 
     _validate_keys: bool = True
     _validate_values: bool = True
